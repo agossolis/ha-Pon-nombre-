@@ -1,0 +1,64 @@
+import requests
+import datetime
+import time
+import os
+
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
+CHAT_ID = int(os.getenv("CHAT_ID"))
+MAX_PRICE = int(os.getenv("MAX_PRICE", 400))
+
+ORIGINS = {
+    "Buenos Aires": "EZE",
+    "Córdoba": "COR",
+    "Santiago de Chile": "SCL",
+    "Montevideo": "MVD",
+    "Asunción": "ASU"
+}
+
+def buscar_vuelos(code):
+    url = "https://google-flights-search.p.rapidapi.com/flights/search-oneway"
+    headers = {
+        "X-RapidAPI-Key": RAPIDAPI_KEY,
+        "X-RapidAPI-Host": "google-flights-search.p.rapidapi.com"
+    }
+    destinos = ["LAX","MIA","MAD","BCN","LIM","BOG","GIG","SAO"]
+    resultados = []
+    for destino in destinos:
+        params = {
+            "from": code,
+            "to": destino,
+            "date": datetime.datetime.now().strftime("%Y-%m-%d"),
+            "currency": "USD",
+            "adults": "1"
+        }
+        r = requests.get(url, headers=headers, params=params)
+        for v in r.json().get("data", []):
+            precio = float(v["price"]["amount"])
+            if precio <= MAX_PRICE:
+                resumen = (
+                    f"✈️ {code} → {destino}\n"
+                    f"💸 ${precio} USD\n"
+                    f"📅 {v['date']}\n"
+                    f"📍 {v.get('airline','?')}"
+                )
+                resultados.append(resumen)
+    return resultados
+
+def enviar(msg):
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    requests.post(url, json={"chat_id": CHAT_ID, "text": msg})
+
+def main():
+    for ciudad, code in ORIGINS.items():
+        vuelos = buscar_vuelos(code)
+        if vuelos:
+            for v in vuelos: enviar(f"🌍 Desde {ciudad}:\n{v}")
+        else:
+            enviar(f"Sin vuelos baratos desde {ciudad} ahora.")
+
+if __name__=="__main__":
+    while True:
+        try: main()
+        except Exception as e: enviar(f"⚠️ Error: {e}")
+        time.sleep(60*60*2)
